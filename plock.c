@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-10-29 23:09:26 pierre>
+ * Time-stamp: <2014-10-30 19:24:18 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -21,8 +21,6 @@
 /*
  * Because define defines
  */
-#define WIN_WIDTH 1024
-#define WIN_HEIGHT 768
 #define BUFSIZE 255
 #define TMPBUFSIZE 5
 
@@ -38,6 +36,8 @@ static XImage *xicon;
 static char *locked_at;
 static XFontStruct *font;
 static char password[BUFSIZE];
+static int win_width;
+static int win_height;
 
 typedef struct config {
     char *font_string;
@@ -94,40 +94,39 @@ void close_display()
 void draw()
 {
     int length;
-    int padding = 20;
-    int bottom_padding = 100;
+    const int padding = 50;
+    const int bottom_padding = (win_height * 0.25);
     char *str = get_time();
 
     pthread_mutex_lock(&win_mutex);
 
     XSetForeground(display, gc, config.fg);
 
+    /* First round */
     if (!font) {
         font = XLoadQueryFont(display, config.font_string);
         if (font) {
             XSetFont(display, gc, font->fid);
         } else {
             fprintf(stderr, "Font %s not found\n", config.font_string);
+            exit(1);
         }
     }
 
-
     /* Time */
     length = XTextWidth(font, str, strlen(str));
-    XDrawString(display, window, gc, WIN_WIDTH - length - padding, padding, str, strlen(str));
+    XDrawString(display, window, gc, win_width - length - padding, padding, str, strlen(str));
 
     /* Icon */
-    XPutImage(display, window, gc, xicon, 0, 0, WIN_WIDTH / 2 - xicon->width / 2, WIN_HEIGHT - bottom_padding - padding - xicon->height, xicon->width, xicon->height);
-
-
+    XPutImage(display, window, gc, xicon, 0, 0, win_width / 2 - xicon->width / 2, win_height - bottom_padding - padding - xicon->height, xicon->width, xicon->height);
 
     /* Dots */
     if (password[0] != 0) {
         XSetForeground(display, gc, 0x00353535);
 
-        XFillArc(display, window, gc, WIN_WIDTH / 2 - 48, WIN_HEIGHT - bottom_padding - padding, 24, 24, 0, 360 * 64);
-        XFillArc(display, window, gc, WIN_WIDTH / 2 - 12, WIN_HEIGHT - bottom_padding - padding, 24, 24, 0, 360 * 64);
-        XFillArc(display, window, gc, WIN_WIDTH / 2 + 24, WIN_HEIGHT - bottom_padding - padding, 24, 24, 0, 360 * 64);
+        XFillArc(display, window, gc, win_width / 2 - 48, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
+        XFillArc(display, window, gc, win_width / 2 - 12, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
+        XFillArc(display, window, gc, win_width / 2 + 24, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
 
         XSetForeground(display, gc, config.fg);
     }
@@ -137,12 +136,13 @@ void draw()
         str = "Capslock is activated";
         length = XTextWidth(font, str, strlen(str));
         XSetForeground(display, gc, config.fg);
-        XDrawString(display, window, gc, WIN_WIDTH / 2 - length / 2, WIN_HEIGHT - bottom_padding + padding, str, strlen(str));
+        XDrawString(display, window, gc, win_width / 2 - length / 2, win_height - bottom_padding + padding, str, strlen(str));
     }
 
     /* Locked at */
     length = XTextWidth(font, locked_at, strlen(locked_at));
-    XDrawString(display, window, gc, WIN_WIDTH - length - padding, WIN_HEIGHT - padding, locked_at, strlen(locked_at));
+    printf("%s\n", locked_at);
+    XDrawString(display, window, gc, win_width - length - padding, win_height - padding, locked_at, strlen(locked_at));
 
     pthread_mutex_unlock(&win_mutex);
 }
@@ -239,6 +239,27 @@ void *f_password(void *argv)
 }
 
 /*
+ * Create an invisible cursor
+ * credits: http://www.linuxforums.org/forum/programming-scripting/59012-xlib-hide-mouse-pointer.html
+ */
+void hide_cursor()
+{
+    Cursor cursor;
+    Pixmap bm_no;
+    Colormap color_map;
+    XColor black, dummy;
+    static char bm_no_data[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+    color_map = DefaultColormap(display, screen);
+    XAllocNamedColor(display, color_map, "black", &black, &dummy);
+    bm_no = XCreateBitmapFromData(display, window, bm_no_data, 8, 8);
+    cursor = XCreatePixmapCursor(display, bm_no, bm_no, &black, &black, 0, 0);
+
+    XDefineCursor(display, window, cursor);
+    XFreeCursor(display, cursor);
+}
+
+/*
  * Load config. Can not explain more.
  */
 void load_config()
@@ -257,9 +278,11 @@ int main(int argc, char **argv)
     pthread_t th_password;
     pthread_t th_time;
     void *ret;
+    Screen *displayed_screen;
 
+
+    /* Init */
     load_config();
-
     locked_at = malloc(19 * sizeof(char));
     sprintf(locked_at, "Locked at %s", get_time());
 
@@ -275,12 +298,20 @@ int main(int argc, char **argv)
     /* Screens */
     fprintf(stdout, "Managing %d screen(s)\n", ScreenCount(display));
     screen = DefaultScreen(display);
+    displayed_screen = DefaultScreenOfDisplay(display);
+    win_width = displayed_screen->width;
+    win_height = displayed_screen->height;
 
     /* Window */
-    window = XCreateSimpleWindow(display, RootWindow(display, screen), 1, 1, WIN_WIDTH, WIN_HEIGHT, 0, 0, config.bg);
+    window = XCreateSimpleWindow(display, RootWindow(display, screen), 1, 1, win_width, win_height, 0, 0, config.bg);
     XMapWindow(display, window);
     XFlush(display);
     XSelectInput(display, window, ExposureMask | KeyPressMask);
+
+    /* Cursor */
+    hide_cursor();
+
+    /* GC */
     gc = DefaultGC(display, screen);
 
     /* Threads */
