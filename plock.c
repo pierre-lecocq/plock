@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-10-30 19:24:18 pierre>
+ * Time-stamp: <2014-10-31 15:45:12 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -279,7 +279,7 @@ int main(int argc, char **argv)
     pthread_t th_time;
     void *ret;
     Screen *displayed_screen;
-
+    XSetWindowAttributes win_attr;
 
     /* Init */
     load_config();
@@ -303,7 +303,9 @@ int main(int argc, char **argv)
     win_height = displayed_screen->height;
 
     /* Window */
-    window = XCreateSimpleWindow(display, RootWindow(display, screen), 1, 1, win_width, win_height, 0, 0, config.bg);
+    win_attr.override_redirect = 1;
+    win_attr.background_pixel = config.bg;
+    window = XCreateWindow(display, RootWindow(display, screen), 0, 0, win_width, win_height, 0, DefaultDepth(display, screen), CopyFromParent, DefaultVisual(display, screen), CWOverrideRedirect | CWBackPixel, &win_attr);
     XMapWindow(display, window);
     XFlush(display);
     XSelectInput(display, window, ExposureMask | KeyPressMask);
