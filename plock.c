@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-10-31 15:45:12 pierre>
+ * Time-stamp: <2014-10-31 17:34:11 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -14,6 +14,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
+#include <shadow.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/xpm.h>
@@ -38,6 +39,7 @@ static XFontStruct *font;
 static char password[BUFSIZE];
 static int win_width;
 static int win_height;
+static struct spwd *user_info;
 
 typedef struct config {
     char *font_string;
@@ -69,11 +71,13 @@ char *get_time()
 /*
  * Check password
  */
-int check_password(char *str)
+int check_password(char *passwd)
 {
     int is_valid = 0;
 
-    fprintf(stdout, "Checking password [%s]\n", str);
+    if (strcmp(user_info->sp_pwdp, passwd) == 0) {
+        is_valid = 1;
+    }
 
     return is_valid;
 }
@@ -285,6 +289,12 @@ int main(int argc, char **argv)
     load_config();
     locked_at = malloc(19 * sizeof(char));
     sprintf(locked_at, "Locked at %s", get_time());
+
+    user_info = getspnam(getenv('USER'));
+    if (user_info == NULL) {
+        fprintf(stderr, "Can not retrieve current user information\n");
+        exit(1);
+    }
 
     XInitThreads();
 
