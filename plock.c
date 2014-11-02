@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-02 18:05:05 pierre>
+ * Time-stamp: <2014-11-02 18:10:26 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -254,7 +254,6 @@ void *f_password(void *argv)
                 /* Any key = store */
                 if (x < BUFSIZE) {
                     charcount = XLookupString(&event.xkey, tmp, TMPBUFSIZE, &keysym, 0);
-                    printf("Hit %d = %c\n", charcount, tmp[0]);
                     password[x] = tmp[0];
                     memset(tmp, 0, TMPBUFSIZE);
                     x++;
