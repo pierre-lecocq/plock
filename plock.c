@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-10-31 17:34:11 pierre>
+ * Time-stamp: <2014-11-02 18:05:05 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -14,7 +14,8 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-#include <shadow.h>
+#include <pwd.h>
+#include <crypt.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/xpm.h>
@@ -33,13 +34,14 @@ static Display *display;
 static Window window;
 static int screen;
 static GC gc;
-static XImage *xicon;
-static char *locked_at;
+static XImage *xicon_lock;
+static XImage *xicon_clock;
+static int locked_at_ts;
 static XFontStruct *font;
 static char password[BUFSIZE];
 static int win_width;
 static int win_height;
-static struct spwd *user_info;
+static struct passwd *user_info;
 
 typedef struct config {
     char *font_string;
@@ -65,7 +67,49 @@ char *get_time()
     time_info = localtime(&timer);
     strftime(buf, 9, fmt, time_info);
 
-    return buf;
+    return(buf);
+}
+
+/*
+ * Get "time ago" string representation
+ */
+char *time_ago(int timestamp)
+{
+    int elapsed_ts = time(NULL) - timestamp;
+    int days = 0;
+    int hours = 0;
+    int minutes = 0;
+    char *result;
+
+    /* Calculations */
+    if (elapsed_ts < 60) {
+        return("Less than one minute ago");
+    }
+
+    days = elapsed_ts / 86400;
+    elapsed_ts -= days * 86400;
+    hours = elapsed_ts / 3600;
+    elapsed_ts -= hours * 3600;
+    minutes = elapsed_ts / 60;
+
+    /* String representation */
+    result = malloc(20 * sizeof(char));
+    memset(result, 0, 20);
+    if (days) {
+        sprintf(result, "%s%dd ", result, days);
+    }
+
+    if (hours) {
+        sprintf(result, "%s%dh ", result, hours);
+    }
+
+    if (minutes){
+        sprintf(result, "%s%dm", result, minutes);
+    }
+
+    sprintf(result, "%s ago", result);
+
+    return(result);
 }
 
 /*
@@ -73,13 +117,7 @@ char *get_time()
  */
 int check_password(char *passwd)
 {
-    int is_valid = 0;
-
-    if (strcmp(user_info->sp_pwdp, passwd) == 0) {
-        is_valid = 1;
-    }
-
-    return is_valid;
+    return(!strcmp(user_info->pw_passwd, crypt(passwd, user_info->pw_passwd)));
 }
 
 /*
@@ -97,11 +135,11 @@ void close_display()
  */
 void draw()
 {
+    char *str;
     int length;
     const int padding = 50;
-    const int bottom_padding = (win_height * 0.25);
-    char *str = get_time();
 
+    /* Lock mutex */
     pthread_mutex_lock(&win_mutex);
 
     XSetForeground(display, gc, config.fg);
@@ -117,37 +155,30 @@ void draw()
         }
     }
 
-    /* Time */
+    /* Icon Lock */
+    XPutImage(display, window, gc, xicon_lock, 0, 0, padding, padding, xicon_lock->width, xicon_lock->height);
+
+    /* Locked at */
+    str = time_ago(locked_at_ts);
     length = XTextWidth(font, str, strlen(str));
-    XDrawString(display, window, gc, win_width - length - padding, padding, str, strlen(str));
+    XDrawString(display, window, gc, padding + xicon_lock->width + 12, padding + 14, str, strlen(str));
 
-    /* Icon */
-    XPutImage(display, window, gc, xicon, 0, 0, win_width / 2 - xicon->width / 2, win_height - bottom_padding - padding - xicon->height, xicon->width, xicon->height);
-
-    /* Dots */
-    if (password[0] != 0) {
-        XSetForeground(display, gc, 0x00353535);
-
-        XFillArc(display, window, gc, win_width / 2 - 48, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
-        XFillArc(display, window, gc, win_width / 2 - 12, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
-        XFillArc(display, window, gc, win_width / 2 + 24, win_height - bottom_padding - padding, 24, 24, 0, 360 * 64);
-
-        XSetForeground(display, gc, config.fg);
-    }
+    /* Time & clock icon */
+    str = get_time();
+    length = XTextWidth(font, str, strlen(str));
+    XDrawString(display, window, gc, win_width - length - padding, padding + 14, str, strlen(str));
+    XPutImage(display, window, gc, xicon_clock, 0, 0,
+              win_width - length - xicon_lock->width - padding - 12, padding, xicon_lock->width, xicon_lock->height);
 
     /* Capslock */
     if (config.caps_lock) {
-        str = "Capslock is activated";
+        str = "Hint: Caps Lock is activated";
         length = XTextWidth(font, str, strlen(str));
         XSetForeground(display, gc, config.fg);
-        XDrawString(display, window, gc, win_width / 2 - length / 2, win_height - bottom_padding + padding, str, strlen(str));
+        XDrawString(display, window, gc, win_width - length - padding, win_height - padding, str, strlen(str));
     }
 
-    /* Locked at */
-    length = XTextWidth(font, locked_at, strlen(locked_at));
-    printf("%s\n", locked_at);
-    XDrawString(display, window, gc, win_width - length - padding, win_height - padding, locked_at, strlen(locked_at));
-
+    /* Unlock mutex */
     pthread_mutex_unlock(&win_mutex);
 }
 
@@ -209,8 +240,8 @@ void *f_password(void *argv)
                 config.caps_lock = !config.caps_lock;
             } else if (XLookupKeysym(&event.xkey, 0) == XK_Return)  {
                 /* Return = check */
-                if (check_password(password)) {
-                    fprintf(stdout, "Access granted\n");
+                if (check_password(password) == 1) {
+                    fprintf(stdout, "Access granted!\n");
                     break;
                 } else {
                     fprintf(stdout, "You failed!\n");
@@ -230,9 +261,7 @@ void *f_password(void *argv)
                     draw();
                 }
             }
-        }
-
-        if (event.type == Expose) {
+        } else if (event.type == Expose) {
             draw();
         }
     }
@@ -287,13 +316,12 @@ int main(int argc, char **argv)
 
     /* Init */
     load_config();
-    locked_at = malloc(19 * sizeof(char));
-    sprintf(locked_at, "Locked at %s", get_time());
 
-    user_info = getspnam(getenv('USER'));
-    if (user_info == NULL) {
+    locked_at_ts = time(NULL);
+
+    if ((user_info = getpwnam(getenv("USER"))) == NULL) {
         fprintf(stderr, "Can not retrieve current user information\n");
-        exit(1);
+        return(1);
     }
 
     XInitThreads();
@@ -302,7 +330,7 @@ int main(int argc, char **argv)
     display = XOpenDisplay(NULL);
     if (display == NULL) {
         fprintf(stderr, "Cannot open display\n");
-        exit(1);
+        return(1);
     }
 
     /* Screens */
@@ -315,10 +343,15 @@ int main(int argc, char **argv)
     /* Window */
     win_attr.override_redirect = 1;
     win_attr.background_pixel = config.bg;
-    window = XCreateWindow(display, RootWindow(display, screen), 0, 0, win_width, win_height, 0, DefaultDepth(display, screen), CopyFromParent, DefaultVisual(display, screen), CWOverrideRedirect | CWBackPixel, &win_attr);
+    window = XCreateWindow(display, RootWindow(display, screen),
+                           0, 0, win_width, win_height,
+                           0, DefaultDepth(display, screen), CopyFromParent,
+                           DefaultVisual(display, screen),
+                           CWOverrideRedirect | CWBackPixel, &win_attr);
     XMapWindow(display, window);
     XFlush(display);
     XSelectInput(display, window, ExposureMask | KeyPressMask);
+    XGrabKeyboard(display, window, True, GrabModeAsync, GrabModeAsync, CurrentTime);
 
     /* Cursor */
     hide_cursor();
@@ -326,20 +359,26 @@ int main(int argc, char **argv)
     /* GC */
     gc = DefaultGC(display, screen);
 
-    /* Threads */
-    if (XpmReadFileToImage(display, "icon.xpm", &xicon, NULL, NULL) < 0) {
-        fprintf(stderr, "Cannot open icon.xpm\n");
-        exit(1);
+    /* Icons */
+    if (XpmReadFileToImage(display, "icon-lock.xpm", &xicon_lock, NULL, NULL) < 0) {
+        fprintf(stderr, "Cannot open icon-lock.xpm\n");
+        return(1);
     }
 
+    if (XpmReadFileToImage(display, "icon-clock.xpm", &xicon_clock, NULL, NULL) < 0) {
+        fprintf(stderr, "Cannot open icon-clock.xpm\n");
+        return(1);
+    }
+
+    /* Threads */
     if (pthread_create(&th_password, NULL, f_password, NULL) < 0) {
         fprintf(stderr, "pthread_create error for thread password\n");
-        exit(1);
+        return(1);
     }
 
     if (pthread_create(&th_time, NULL, f_time, NULL) < 0) {
         fprintf(stderr, "pthread_create error for thread time\n");
-        exit(1);
+        return(1);
     }
 
     pthread_join(th_password, &ret);
