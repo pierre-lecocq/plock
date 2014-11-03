@@ -220,7 +220,6 @@ void *f_password(void *argv)
     char tmp[BUFSIZE];
     XEvent event;
     KeySym keysym;
-    int charcount;
 
     x = 0;
     memset(tmp, 0, TMPBUFSIZE);
@@ -253,7 +252,7 @@ void *f_password(void *argv)
             } else {
                 /* Any key = store */
                 if (x < BUFSIZE) {
-                    charcount = XLookupString(&event.xkey, tmp, TMPBUFSIZE, &keysym, 0);
+                    XLookupString(&event.xkey, tmp, TMPBUFSIZE, &keysym, 0);
                     password[x] = tmp[0];
                     memset(tmp, 0, TMPBUFSIZE);
                     x++;
