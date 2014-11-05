@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 23:23:25 pierre>
+ * Time-stamp: <2014-11-05 23:32:46 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -115,7 +115,7 @@ static char *xpm_clock[] = {
 void puke(char *message)
 {
     fprintf(stderr, "ERROR: %s\n", message);
-    exit(1);
+    exit(EXIT_FAILURE);
 }
 
 /*
@@ -433,7 +433,7 @@ void load_config()
     config.font_string = "-*-helvetica-*-r-*-*-14-*-*-*-*-*-*-*";
     config.bg = 0x00252525;
     config.fg = 0x00858585;
-    config.caps_lock = 1;
+    config.caps_lock = 0;
 }
 
 /*
@@ -512,5 +512,5 @@ int main(int argc, char **argv)
     pthread_join(th_password, &ret);
     pthread_join(th_time, &ret);
 
-    return(0);
+    return(EXIT_SUCCESS);
 }
