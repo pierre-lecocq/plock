@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 13:39:06 toto>
+ * Time-stamp: <2014-11-05 23:23:25 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -11,6 +11,9 @@
 #define _GNU_SOURCE /* getresuid */
 #define BUFSIZE 255
 #define TMPBUFSIZE 5
+#define PASSWD_RESULT_RESET 0
+#define PASSWD_RESULT_SUCCESS 1
+#define PASSWD_RESULT_FAILURE 2
 
 /*
  * Because include includes
@@ -44,6 +47,7 @@ static char password[BUFSIZE];
 static int win_width;
 static int win_height;
 static uid_t ruid = -1, euid = -1, suid = -1;
+static int passwd_result;
 
 typedef struct config {
     char *font_string;
@@ -105,7 +109,6 @@ static char *xpm_clock[] = {
     ".....      ....."
 };
 
-
 /*
  * Houston, we have a problem
  */
@@ -113,6 +116,21 @@ void puke(char *message)
 {
     fprintf(stderr, "ERROR: %s\n", message);
     exit(1);
+}
+
+/*
+ * Close everything
+ */
+void bye_bye_baby()
+{
+    XDestroyWindow(display, window);
+    XCloseDisplay(display);
+    display = NULL;
+
+    memset(password, 0, BUFSIZE);
+    free(xicon_lock);
+    free(xicon_clock);
+    free(font);
 }
 
 /*
@@ -214,16 +232,6 @@ int check_password(char *passwd)
 }
 
 /*
- * Close display and release the prisonner
- */
-void close_display()
-{
-    XDestroyWindow(display, window);
-    XCloseDisplay(display);
-    display = NULL;
-}
-
-/*
  * Update display
  */
 void draw()
@@ -261,6 +269,23 @@ void draw()
     XDrawString(display, window, gc, win_width - length - padding, padding + 14, str, strlen(str));
     XPutImage(display, window, gc, xicon_clock, 0, 0,
               win_width - length - xicon_lock->width - padding - 12, padding, xicon_lock->width, xicon_lock->height);
+
+    /* Hint */
+    if (password[0] != 0) {
+        str = "Press Enter to validate your password or Escape to cancel";
+        length = XTextWidth(font, str, strlen(str));
+        XSetForeground(display, gc, config.fg);
+        XDrawString(display, window, gc, (win_width / 2) - (length / 2), win_height - (win_height * 0.20), str, strlen(str));
+    }
+
+    /* Password result */
+    if (passwd_result != PASSWD_RESULT_RESET) {
+        str = (passwd_result == PASSWD_RESULT_SUCCESS) ? "Yeah!" : "Wrong password";
+        length = XTextWidth(font, str, strlen(str));
+        XSetForeground(display, gc, config.fg);
+        XDrawString(display, window, gc, (win_width / 2) - (length / 2), win_height - (win_height * 0.20) - padding, str, strlen(str));
+        passwd_result = PASSWD_RESULT_RESET;
+    }
 
     /* Capslock */
     if (config.caps_lock) {
@@ -326,25 +351,43 @@ void *f_password(void *argv)
                 x = 0;
                 memset(tmp, 0, TMPBUFSIZE);
                 memset(password, 0, BUFSIZE);
+                draw();
             } else if (XLookupKeysym(&event.xkey, 0) == XK_Caps_Lock)  {
-                /* Caps lock  = warning */
+                /* Caps lock = warning */
                 config.caps_lock = !config.caps_lock;
+                draw();
             } else if (XLookupKeysym(&event.xkey, 0) == XK_Return)  {
                 /* Return = check */
-                if (check_password(password) == 1) {
-                    fprintf(stdout, "Access granted!\n");
-                    break;
-                } else {
-                    fprintf(stdout, "You failed!\n");
-                }
+                if (password[0] != 0) {
+                    if (check_password(password) == 1) {
+                        passwd_result = PASSWD_RESULT_SUCCESS;
+                        break;
+                    } else {
+                        passwd_result = PASSWD_RESULT_FAILURE;
+                    }
 
-                x = 0;
-                memset(tmp, 0, TMPBUFSIZE);
-                memset(password, 0, BUFSIZE);
+                    x = 0;
+                    memset(tmp, 0, TMPBUFSIZE);
+                    memset(password, 0, BUFSIZE);
+                    draw();
+                }
             } else {
                 /* Any key = store */
                 if (x < BUFSIZE) {
                     XLookupString(&event.xkey, tmp, TMPBUFSIZE, &keysym, 0);
+
+                    if (
+                        IsCursorKey(keysym)
+                        || IsFunctionKey(keysym)
+                        || IsKeypadKey(keysym)
+                        || IsMiscFunctionKey(keysym)
+                        || IsModifierKey(keysym)
+                        || IsPFKey(keysym)
+                        || IsPrivateKeypadKey(keysym)
+                    ) {
+                        continue;
+                    }
+
                     password[x] = tmp[0];
                     memset(tmp, 0, TMPBUFSIZE);
                     x++;
@@ -356,7 +399,7 @@ void *f_password(void *argv)
         }
     }
 
-    close_display();
+    bye_bye_baby();
 
     pthread_exit(0);
 }
@@ -390,7 +433,7 @@ void load_config()
     config.font_string = "-*-helvetica-*-r-*-*-14-*-*-*-*-*-*-*";
     config.bg = 0x00252525;
     config.fg = 0x00858585;
-    config.caps_lock = 0;
+    config.caps_lock = 1;
 }
 
 /*
@@ -411,6 +454,7 @@ int main(int argc, char **argv)
     }
 
     /* Init */
+    passwd_result = PASSWD_RESULT_RESET;
     load_config();
     locked_at_ts = time(NULL);
     XInitThreads();
