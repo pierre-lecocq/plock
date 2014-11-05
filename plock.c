@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 23:32:46 pierre>
+ * Time-stamp: <2014-11-05 23:57:17 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -9,6 +9,7 @@
  * Because define defines
  */
 #define _GNU_SOURCE /* getresuid */
+#define VERSION "0.6"
 #define BUFSIZE 255
 #define TMPBUFSIZE 5
 #define PASSWD_RESULT_RESET 0
@@ -22,6 +23,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <string.h>
+#include <getopt.h>
 #include <pthread.h>
 #include <time.h>
 #include <crypt.h>
@@ -116,6 +118,16 @@ void puke(char *message)
 {
     fprintf(stderr, "ERROR: %s\n", message);
     exit(EXIT_FAILURE);
+}
+
+/*
+ * Print verion and exit
+ */
+void version()
+{
+    printf("plock %s\n", VERSION);
+
+    exit(EXIT_SUCCESS);
 }
 
 /*
@@ -426,14 +438,45 @@ void hide_cursor()
 }
 
 /*
- * Load config. Can not explain more.
+ * Get config. Can not explain more.
  */
-void load_config()
+void get_config(int argc, char **argv)
 {
+    int x;
+    struct option longopts[] = {
+        {"bg", optional_argument, NULL, 'b'},
+        {"fg", optional_argument, NULL, 'f'},
+        {"version", optional_argument, NULL, 'v'},
+        {0, 0, 0, 0}
+    };
+
+    /* Defaults */
     config.font_string = "-*-helvetica-*-r-*-*-14-*-*-*-*-*-*-*";
     config.bg = 0x00252525;
     config.fg = 0x00858585;
     config.caps_lock = 0;
+
+    /* Listen to the user. Sometimes. Please. */
+    if (argc > 1) {
+        while ((x = getopt_long(argc, argv, "b:f:v", longopts, NULL)) != -1) {
+            switch (x) {
+            case 'b':
+                config.bg = atol(optarg);
+                break;
+
+            case 'f':
+                config.fg = atol(optarg);
+                break;
+
+            case 'v':
+                version();
+                break;
+
+            default:
+                ;
+            }
+        }
+    }
 }
 
 /*
@@ -455,7 +498,7 @@ int main(int argc, char **argv)
 
     /* Init */
     passwd_result = PASSWD_RESULT_RESET;
-    load_config();
+    get_config(argc, argv);
     locked_at_ts = time(NULL);
     XInitThreads();
 
