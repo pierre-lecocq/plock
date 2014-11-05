@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 12:54:26 toto>
+ * Time-stamp: <2014-11-05 13:39:06 toto>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -167,7 +167,7 @@ char *time_ago(int timestamp)
     }
 
     if (minutes){
-        sprintf(result, "%s%dm", result, minutes);
+        sprintf(result, "%s%dmn", result, minutes);
     }
 
     sprintf(result, "%s ago", result);
