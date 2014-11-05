@@ -1,9 +1,16 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-04 23:52:20 pierre>
+ * Time-stamp: <2014-11-05 12:34:01 toto>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
+
+/*
+ * Because define defines
+ */
+#define _GNU_SOURCE /* getresuid */
+#define BUFSIZE 255
+#define TMPBUFSIZE 5
 
 /*
  * Because include includes
@@ -22,12 +29,6 @@
 #include <shadow.h>
 
 /*
- * Because define defines
- */
-#define BUFSIZE 255
-#define TMPBUFSIZE 5
-
-/*
  * Static variables
  */
 static pthread_mutex_t win_mutex;
@@ -42,6 +43,7 @@ static XFontStruct *font;
 static char password[BUFSIZE];
 static int win_width;
 static int win_height;
+static uid_t ruid = -1, euid = -1, suid = -1;
 
 typedef struct config {
     char *font_string;
@@ -64,7 +66,7 @@ void puke(char *message)
 /*
  * Get time as a string
  */
-char *get_time()
+char *get_time_string()
 {
     char *buf;
     char *fmt = "%H:%M:%S";
@@ -130,20 +132,29 @@ int check_password(char *passwd)
     struct passwd *user_info;
     struct spwd *user_info_shadowed;
 
-    user_info = getpwuid(getuid());
+    user_info = getpwuid(euid);
     if (user_info == NULL) {
-        puke("Error user 1");
+        puke("Can not get user from getpwuid");
     }
 
     if (strcmp(user_info->pw_passwd, "x") == 0) {
-        /* user_info_shadowed = malloc(sizeof(struct spwd)); */
-        user_info_shadowed = getspnam(getenv("USER"));
-        if (user_info_shadowed == NULL) {
-            puke("Error user 2");
+        if (seteuid(0) < 0) {
+            puke("Can not go set higher privileges");
         }
 
+        user_info_shadowed = getspnam(user_info->pw_name);
+        if (user_info_shadowed == NULL) {
+            puke("Can not get user from getspnam");
+        }
+
+        endspent();
         sys_passwd = user_info_shadowed->sp_pwdp;
+
+        if (seteuid(euid) < 0) {
+            puke("Can not go back to original privileges");
+        }
     } else {
+        endpwent();
         sys_passwd = user_info->pw_passwd;
     }
 
@@ -193,7 +204,7 @@ void draw()
     XDrawString(display, window, gc, padding + xicon_lock->width + 12, padding + 14, str, strlen(str));
 
     /* Time & clock icon */
-    str = get_time();
+    str = get_time_string();
     length = XTextWidth(font, str, strlen(str));
     XDrawString(display, window, gc, win_width - length - padding, padding + 14, str, strlen(str));
     XPutImage(display, window, gc, xicon_clock, 0, 0,
@@ -341,16 +352,15 @@ int main(int argc, char **argv)
     Screen *displayed_screen;
     XSetWindowAttributes win_attr;
 
+    /* Sudo ? */
+    getresuid(&ruid, &euid, &suid);
+    if (ruid != 0) {
+        puke("Please run the program with higher privileges");
+    }
+
     /* Init */
     load_config();
-
     locked_at_ts = time(NULL);
-
-    /* User info */
-    printf(" ---> %d\n", check_password("plop"));
-    printf("done\n");
-    exit(1);
-
     XInitThreads();
 
     /* Display */
