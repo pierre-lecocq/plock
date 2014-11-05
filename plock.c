@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 23:57:17 pierre>
+ * Time-stamp: <2014-11-06 00:11:19 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -121,7 +121,7 @@ void puke(char *message)
 }
 
 /*
- * Print verion and exit
+ * Print version and exit
  */
 void version()
 {
@@ -216,24 +216,24 @@ int check_password(char *passwd)
 
     user_info = getpwuid(euid);
     if (user_info == NULL) {
-        puke("Can not get user from getpwuid");
+        puke("Cannot get user from getpwuid");
     }
 
     if (strcmp(user_info->pw_passwd, "x") == 0) {
         if (seteuid(0) < 0) {
-            puke("Can not go set higher privileges");
+            puke("Cannot set higher privileges");
         }
 
         user_info_shadowed = getspnam(user_info->pw_name);
         if (user_info_shadowed == NULL) {
-            puke("Can not get user from getspnam");
+            puke("Cannot get user from getspnam");
         }
 
         endspent();
         sys_passwd = user_info_shadowed->sp_pwdp;
 
         if (seteuid(euid) < 0) {
-            puke("Can not go back to original privileges");
+            puke("Cannot go back to original privileges");
         }
     } else {
         endpwent();
@@ -493,7 +493,7 @@ int main(int argc, char **argv)
     /* Sudo ? */
     getresuid(&ruid, &euid, &suid);
     if (ruid != 0) {
-        puke("Please run the program with higher privileges");
+        puke("Please run the program with higher privileges (sudo)");
     }
 
     /* Init */
