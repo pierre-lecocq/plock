@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-05 12:34:01 toto>
+ * Time-stamp: <2014-11-05 12:54:26 toto>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -53,6 +53,58 @@ typedef struct config {
 } st_config;
 
 static st_config config;
+
+/*
+ * Icons
+ */
+static char *xpm_lock[] = {
+    /* columns rows colors chars-per-pixel */
+    "16 16 2 1",
+    "  c #a5a5a5",
+    ". c None",
+    /* pixels */
+    "......    ......",
+    ".....      .....",
+    "....  ...   ....",
+    "....  ....  ....",
+    "...  ......  ...",
+    "...  ......  ...",
+    "...   ....   ...",
+    ".              .",
+    ".              .",
+    ".              .",
+    ".              .",
+    ".              .",
+    ".              .",
+    ".              .",
+    ".              .",
+    "..            .."
+};
+
+static char *xpm_clock[] = {
+    /* columns rows colors chars-per-pixel */
+    "16 16 2 1",
+    "  c #a5a5a5",
+    ". c None",
+    /* pixels */
+    ".....      .....",
+    "...          ...",
+    "..            ..",
+    ".      .       .",
+    ".      .       .",
+    "       .        ",
+    "       .        ",
+    "       ..       ",
+    "       ..       ",
+    "        ..      ",
+    "         ..     ",
+    ".              .",
+    ".              .",
+    "..            ..",
+    "...          ...",
+    ".....      ....."
+};
+
 
 /*
  * Houston, we have a problem
@@ -396,12 +448,12 @@ int main(int argc, char **argv)
     gc = DefaultGC(display, screen);
 
     /* Icons */
-    if (XpmReadFileToImage(display, "icon-lock.xpm", &xicon_lock, NULL, NULL) < 0) {
-        puke("Cannot open icon-lock.xpm");
+    if (XpmCreateImageFromData(display, xpm_lock, &xicon_lock, NULL, NULL) < 0) {
+        puke("Cannot load image lock");
     }
 
-    if (XpmReadFileToImage(display, "icon-clock.xpm", &xicon_clock, NULL, NULL) < 0) {
-        puke("Cannot open icon-clock.xpm");
+    if (XpmCreateImageFromData(display, xpm_clock, &xicon_clock, NULL, NULL) < 0) {
+        puke("Cannot load image clock");
     }
 
     /* Threads */
