@@ -3,7 +3,8 @@ PROGNAME=plock
 SRC=plock.c
 OBJECTS=plock.o
 
-CFLAGS=--pedantic -Wall -fstack-protector -O2
+# TODO remove -g
+CFLAGS=--pedantic -Wall -fstack-protector -O2 -g
 LDFLAGS=-lpthread -lX11 -lXpm -lcrypt
 
 LDPATH=-I/usr/X11R6/include -L/usr/X11R6/lib

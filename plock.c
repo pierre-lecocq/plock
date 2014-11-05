@@ -1,6 +1,6 @@
 /*
  * File: plock.c
- * Time-stamp: <2014-11-02 18:10:26 pierre>
+ * Time-stamp: <2014-11-04 23:52:20 pierre>
  * Copyright (C) 2014 Pierre Lecocq
  * Description: Plock - A screen locking system
  */
@@ -14,11 +14,12 @@
 #include <string.h>
 #include <pthread.h>
 #include <time.h>
-#include <pwd.h>
 #include <crypt.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/xpm.h>
+#include <pwd.h>
+#include <shadow.h>
 
 /*
  * Because define defines
@@ -41,7 +42,6 @@ static XFontStruct *font;
 static char password[BUFSIZE];
 static int win_width;
 static int win_height;
-static struct passwd *user_info;
 
 typedef struct config {
     char *font_string;
@@ -51,6 +51,15 @@ typedef struct config {
 } st_config;
 
 static st_config config;
+
+/*
+ * Houston, we have a problem
+ */
+void puke(char *message)
+{
+    fprintf(stderr, "ERROR: %s\n", message);
+    exit(1);
+}
 
 /*
  * Get time as a string
@@ -117,7 +126,28 @@ char *time_ago(int timestamp)
  */
 int check_password(char *passwd)
 {
-    return(!strcmp(user_info->pw_passwd, crypt(passwd, user_info->pw_passwd)));
+    const char *sys_passwd = NULL;
+    struct passwd *user_info;
+    struct spwd *user_info_shadowed;
+
+    user_info = getpwuid(getuid());
+    if (user_info == NULL) {
+        puke("Error user 1");
+    }
+
+    if (strcmp(user_info->pw_passwd, "x") == 0) {
+        /* user_info_shadowed = malloc(sizeof(struct spwd)); */
+        user_info_shadowed = getspnam(getenv("USER"));
+        if (user_info_shadowed == NULL) {
+            puke("Error user 2");
+        }
+
+        sys_passwd = user_info_shadowed->sp_pwdp;
+    } else {
+        sys_passwd = user_info->pw_passwd;
+    }
+
+    return (strcmp(sys_passwd, crypt(passwd, sys_passwd)) == 0);
 }
 
 /*
@@ -150,8 +180,7 @@ void draw()
         if (font) {
             XSetFont(display, gc, font->fid);
         } else {
-            fprintf(stderr, "Font %s not found\n", config.font_string);
-            exit(1);
+            puke("Font not found");
         }
     }
 
@@ -317,18 +346,17 @@ int main(int argc, char **argv)
 
     locked_at_ts = time(NULL);
 
-    if ((user_info = getpwnam(getenv("USER"))) == NULL) {
-        fprintf(stderr, "Can not retrieve current user information\n");
-        return(1);
-    }
+    /* User info */
+    printf(" ---> %d\n", check_password("plop"));
+    printf("done\n");
+    exit(1);
 
     XInitThreads();
 
     /* Display */
     display = XOpenDisplay(NULL);
     if (display == NULL) {
-        fprintf(stderr, "Cannot open display\n");
-        return(1);
+        puke("Cannot open display");
     }
 
     /* Screens */
@@ -359,24 +387,20 @@ int main(int argc, char **argv)
 
     /* Icons */
     if (XpmReadFileToImage(display, "icon-lock.xpm", &xicon_lock, NULL, NULL) < 0) {
-        fprintf(stderr, "Cannot open icon-lock.xpm\n");
-        return(1);
+        puke("Cannot open icon-lock.xpm");
     }
 
     if (XpmReadFileToImage(display, "icon-clock.xpm", &xicon_clock, NULL, NULL) < 0) {
-        fprintf(stderr, "Cannot open icon-clock.xpm\n");
-        return(1);
+        puke("Cannot open icon-clock.xpm");
     }
 
     /* Threads */
     if (pthread_create(&th_password, NULL, f_password, NULL) < 0) {
-        fprintf(stderr, "pthread_create error for thread password\n");
-        return(1);
+        puke("pthread_create error for thread password");
     }
 
     if (pthread_create(&th_time, NULL, f_time, NULL) < 0) {
-        fprintf(stderr, "pthread_create error for thread time\n");
-        return(1);
+        puke("pthread_create error for thread time");
     }
 
     pthread_join(th_password, &ret);
