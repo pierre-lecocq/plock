@@ -15,11 +15,19 @@ LDPATH=-I/usr/X11R6/include -L/usr/X11R6/lib
 # That's all
 all: $(OBJECTS)
 	gcc $(CFLAGS) $(SRC) -o $(PROGNAME) $(LDPATH) $(LDFLAGS)
-	@chmod u+s $(PROGNAME) # Sticky bit for shadow functions
+	@chmod u+s $(PROGNAME) # Sticky bitch. For shadow functions
 
 # Build objects
 $(OBJECTS): $(SRC)
 	gcc $(LDPATH) $(LDFLAGS) -o $(OBJECTS) $(SRC)
+
+# Install
+install:
+	install -D ./$(PROGNAME) /usr/bin/$(PROGNAME)
+
+# Uninstall
+uninstall:
+	rm -f /usr/bin/$(PROGNAME)
 
 # Housework
 clean:
